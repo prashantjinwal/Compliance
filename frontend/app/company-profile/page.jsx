@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Sidebar } from '@/components/sidebar'
 import { Topbar } from '@/components/topbar'
 import { Card } from '@/components/ui/card'
@@ -9,24 +9,112 @@ import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
+import { useProtectedUser } from '@/hooks/use-protected-user'
+import { getSafeOrganizationValue, optionalAuthApiRequest } from '@/lib/api'
 
 const DEPARTMENTS = ['Finance', 'HR', 'Legal', 'IT', 'Marketing', 'Operations']
 const REGULATIONS = ['RBI', 'SEBI', 'GDPR', 'HIPAA', 'PCI-DSS', 'SOX']
 
+function getIndustryValue(industry) {
+  const normalizedIndustry = (industry || '').toLowerCase().replace(/\s+/g, '_')
+  const supportedValues = [
+    'financial_services',
+    'fintech',
+    'healthcare',
+    'ecommerce',
+    'manufacturing',
+    'legal',
+  ]
+
+  if (supportedValues.includes(normalizedIndustry)) {
+    return normalizedIndustry
+  }
+
+  return 'not_specified'
+}
+
+function buildProfileForm(user, companyData) {
+  const organization = (companyData && companyData.organization) || user?.organization || {}
+
+  return {
+    name: organization.name || '',
+    industry: getIndustryValue(getSafeOrganizationValue(organization.industry)),
+    size: (companyData && companyData.size) || '1000+',
+    country: organization.country || '',
+    region: (companyData && companyData.region) || '',
+    headcount: (companyData && companyData.headcount) || '',
+    email: (companyData && companyData.email) || user?.email || '',
+    regulations: (companyData && companyData.regulations) || [],
+    departments: (companyData && companyData.departments) || [],
+    risk: (companyData && companyData.risk) || 'medium',
+  }
+}
+
 export default function CompanyProfilePage() {
+  const { user, loading, error } = useProtectedUser()
   const [form, setForm] = useState({
-    name: 'Global Dynamics Inc.',
-    industry: 'financial_services',
+    name: '',
+    industry: 'not_specified',
     size: '1000+',
-    country: 'India',
-    region: 'EU & NA Markets',
-    headcount: '12,450',
-    email: 'compliance@globaldynamics.com',
-    regulations: ['RBI', 'SEBI', 'GDPR'],
-    departments: ['Finance', 'HR', 'Legal'],
+    country: '',
+    region: '',
+    headcount: '',
+    email: '',
+    regulations: [],
+    departments: [],
     risk: 'medium',
   })
-  const [saved, setSaved] = useState(false)
+  const [pageError, setPageError] = useState('')
+  const [pageNotice, setPageNotice] = useState('')
+  const [saveMessage, setSaveMessage] = useState('')
+  const [companyEndpointPath, setCompanyEndpointPath] = useState(null)
+
+  useEffect(() => {
+    if (!user) {
+      return
+    }
+
+    let isActive = true
+
+    async function loadCompanyProfile() {
+      try {
+        const result = await optionalAuthApiRequest([
+          '/api/company-profile/',
+          '/api/company/',
+        ])
+
+        if (!isActive) {
+          return
+        }
+
+        setCompanyEndpointPath(result.path)
+        setForm(buildProfileForm(user, result.data))
+
+        if (!result.path) {
+          setPageNotice('Using current account and organization data because no dedicated company profile endpoint is configured yet.')
+        } else {
+          setPageNotice('')
+        }
+      } catch (requestError) {
+        if (!isActive) {
+          return
+        }
+
+        setForm(buildProfileForm(user, null))
+        setPageError(requestError.message || 'Unable to load company profile data.')
+      }
+    }
+
+    loadCompanyProfile()
+
+    return () => {
+      isActive = false
+    }
+  }, [user])
+
+  if (loading) {
+    return null
+  }
 
   const set = (key, val) => setForm(f => ({ ...f, [key]: val }))
 
@@ -37,26 +125,38 @@ export default function CompanyProfilePage() {
     )
 
   const handleSave = () => {
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+    if (!companyEndpointPath) {
+      setSaveMessage('Save is ready, but a company profile update endpoint is not available yet.')
+      return
+    }
+
+    setSaveMessage('Update endpoint detected, but save wiring depends on its request schema.')
   }
 
   return (
     <div className="flex h-screen bg-gray-50">
-      <Sidebar />
+      <Sidebar user={user} />
 
       <div className="flex-1 ml-56">
-        <Topbar title="Company Profile" />
+        <Topbar title="Company Profile" user={user} />
 
         <main className="pt-20 px-8 pb-8">
           <p className="text-gray-500 text-sm mb-8">Define your organization&apos;s regulatory perimeter.</p>
 
+          {error || pageError ? (
+            <Card className="p-4 bg-red-50 border-red-200 mb-6">
+              <p className="text-sm text-red-700">{pageError || error}</p>
+            </Card>
+          ) : null}
+
+          {pageNotice ? (
+            <Card className="p-4 bg-blue-50 border-blue-200 mb-6">
+              <p className="text-sm text-blue-700">{pageNotice}</p>
+            </Card>
+          ) : null}
+
           <div className="grid grid-cols-3 gap-8">
-
-            {/* Left: Form (col-span-2) */}
             <div className="col-span-2 space-y-6">
-
-              {/* Basic Info */}
               <Card className="p-6">
                 <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">Basic Information</h3>
                 <div className="grid grid-cols-2 gap-4">
@@ -75,6 +175,7 @@ export default function CompanyProfilePage() {
                         <SelectItem value="ecommerce">E-commerce</SelectItem>
                         <SelectItem value="manufacturing">Manufacturing</SelectItem>
                         <SelectItem value="legal">Legal</SelectItem>
+                        <SelectItem value="not_specified">Not specified</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -82,7 +183,7 @@ export default function CompanyProfilePage() {
                     <Label className="text-sm text-gray-600">Country / Region</Label>
                     <Input value={form.country} onChange={e => set('country', e.target.value)} />
                   </div>
-                  
+
                   <div className="space-y-1">
                     <Label className="text-sm text-gray-600">Headcount (FTEs)</Label>
                     <Input value={form.headcount} onChange={e => set('headcount', e.target.value)} />
@@ -94,7 +195,6 @@ export default function CompanyProfilePage() {
                 </div>
               </Card>
 
-              {/* Compliance Scope */}
               <Card className="p-6">
                 <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">Compliance Scope</h3>
 
@@ -134,7 +234,6 @@ export default function CompanyProfilePage() {
                 </div>
               </Card>
 
-              {/* Risk Preferences */}
               <Card className="p-6">
                 <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">Risk Preferences</h3>
                 <Label className="text-sm text-gray-600 mb-2 block">Risk Tolerance</Label>
@@ -158,16 +257,14 @@ export default function CompanyProfilePage() {
                 </div>
               </Card>
 
-              {/* Save */}
               <div className="flex items-center gap-3">
                 <Button onClick={handleSave} className="bg-blue-600 hover:bg-blue-700 text-white px-6">
-                  {saved ? '✓ Saved' : 'Save Profile'}
+                  Save Profile
                 </Button>
-                {saved && <span className="text-sm text-green-600">Profile updated successfully</span>}
+                {saveMessage ? <span className="text-sm text-amber-600">{saveMessage}</span> : null}
               </div>
             </div>
 
-            {/* Right: Summary Card */}
             <div>
               <Card className="p-6 bg-gradient-to-br from-blue-600 to-blue-800 text-white border-none sticky top-24">
                 <div className="mb-6">
@@ -178,22 +275,22 @@ export default function CompanyProfilePage() {
                 <div className="space-y-4 text-sm">
                   <div>
                     <p className="text-blue-100 text-xs font-semibold mb-1">INDUSTRY</p>
-                    <p className="font-medium capitalize">{form.industry.replace('_', ' ') || '—'}</p>
+                    <p className="font-medium capitalize">{form.industry.replace('_', ' ') || '--'}</p>
                   </div>
                   <div>
                     <p className="text-blue-100 text-xs font-semibold mb-1">REGION</p>
-                    <p className="font-medium">{form.country || '—'}</p>
+                    <p className="font-medium">{form.country || '--'}</p>
                   </div>
                   <div>
                     <p className="text-blue-100 text-xs font-semibold mb-1">COMPLIANCE STATUS</p>
                     <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-green-400" />
-                      <p className="font-medium">Audit Ready</p>
+                      <div className={`w-2 h-2 rounded-full ${form.regulations.length > 0 ? 'bg-green-400' : 'bg-amber-300'}`} />
+                      <p className="font-medium">{form.regulations.length > 0 ? 'Frameworks Selected' : 'Profile In Progress'}</p>
                     </div>
                   </div>
                   <div>
                     <p className="text-blue-100 text-xs font-semibold mb-1">HEADCOUNT</p>
-                    <p className="font-medium">{form.headcount ? `${form.headcount} FTEs` : '—'}</p>
+                    <p className="font-medium">{form.headcount ? `${form.headcount} FTEs` : '--'}</p>
                   </div>
 
                   <hr className="border-blue-500 my-4" />
@@ -227,7 +324,6 @@ export default function CompanyProfilePage() {
                 </div>
               </Card>
             </div>
-
           </div>
         </main>
       </div>

@@ -1,4 +1,4 @@
-
+import importlib.util
 
 """
 Django settings for config project.
@@ -12,10 +12,11 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
-from pathlib import Path
 from datetime import timedelta
+from pathlib import Path
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+HAS_DRF_SPECTACULAR = importlib.util.find_spec("drf_spectacular") is not None
 
 
 # Quick-start development settings - unsuitable for production
@@ -40,10 +41,9 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
 
-     # Third-party'drf_spectacular',
+     # Third-party apps
     'rest_framework',
     'corsheaders',
-    'drf_spectacular',
 
 
     # my apps
@@ -51,6 +51,9 @@ INSTALLED_APPS = [
 
 
 ]
+
+if HAS_DRF_SPECTACULAR:
+    INSTALLED_APPS.append('drf_spectacular')
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
@@ -137,8 +140,10 @@ REST_FRAMEWORK = {
         "rest_framework_simplejwt.authentication.JWTAuthentication",
 
     ),
-    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
+
+if HAS_DRF_SPECTACULAR:
+    REST_FRAMEWORK['DEFAULT_SCHEMA_CLASS'] = 'drf_spectacular.openapi.AutoSchema'
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(hours=1),
@@ -147,32 +152,31 @@ SIMPLE_JWT = {
 }
 
 
-SPECTACULAR_SETTINGS = {
-    'TITLE': 'ComplianceOS API',
-    'DESCRIPTION': 'API documentation for ComplianceOS',
-    'VERSION': '1.0.0',
+if HAS_DRF_SPECTACULAR:
+    SPECTACULAR_SETTINGS = {
+        'TITLE': 'ComplianceOS API',
+        'DESCRIPTION': 'API documentation for ComplianceOS',
+        'VERSION': '1.0.0',
 
-    # JWT Auth support
-    'SECURITY': [{'BearerAuth': []}],
-    'COMPONENTS': {
-        'securitySchemes': {
-            'BearerAuth': {
-                'type': 'http',
-                'scheme': 'bearer',
-                'bearerFormat': 'JWT',
+        # JWT Auth support
+        'SECURITY': [{'BearerAuth': []}],
+        'COMPONENTS': {
+            'securitySchemes': {
+                'BearerAuth': {
+                    'type': 'http',
+                    'scheme': 'bearer',
+                    'bearerFormat': 'JWT',
+                }
             }
         }
     }
-}
 
 AUTH_USER_MODEL = "accounts.User"
 
 
 # django-cors-headers
-if DEBUG:
-    CORS_ALLOW_ALL_ORIGINS = True
-    CORS_ALLOW_CREDENTIALS = True
-else:
-    CORS_ALLOWED_ORIGINS = [
-        "http://localhost:5174/",
-    ]
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
