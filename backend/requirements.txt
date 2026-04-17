@@ -16,6 +16,7 @@ django-cors-headers==4.9.0
 djangorestframework==3.17.1
 djangorestframework-simplejwt
 drf-yasg==1.21.15
+fastapi==0.136.0
 h11==0.16.0
 httpcore==1.0.9
 httpx==0.28.1
@@ -40,14 +41,17 @@ prompt_toolkit==3.0.52
 pydantic==2.13.1
 pydantic_core==2.46.1
 python-dateutil==2.9.0.post0
+python-dotenv==1.2.2
 pytz==2026.1.post1
 PyYAML==6.0.3
+qdrant-client==1.17.1
 redis==7.4.0
 requests==2.33.1
 requests-toolbelt==1.0.0
 six==1.17.0
 sniffio==1.3.1
 sqlparse==0.5.5
+APScheduler==3.11.2
 tenacity==9.1.4
 tqdm==4.67.3
 typing-inspection==0.4.2
@@ -56,6 +60,7 @@ tzdata==2026.1
 tzlocal==5.3.1
 uritemplate==4.2.0
 urllib3==2.6.3
+uvicorn==0.44.0
 uuid_utils==0.14.1
 vine==5.1.0
 wcwidth==0.6.0

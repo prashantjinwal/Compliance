@@ -106,6 +106,9 @@ logs/
 *.jsonl
 *.cache
 lc_store/
+compliance_ingestion.db
+qdrant_regulatory_rag/
+qdrant_local_db/
 
 # Jupyter Notebooks
 
