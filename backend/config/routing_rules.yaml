@@ -1,0 +1,23 @@
+rules:
+  - name: material_privacy_tax_payments_update
+    domains: [privacy, tax, payments]
+    exclude_change_types: [NO_CHANGE]
+    targets: [rag_indexer, graph_updater, compliance_assessment_queue]
+
+  - name: consumer_marketplace_update
+    domains: [consumer_protection, marketplace_regulation]
+    exclude_change_types: [NO_CHANGE]
+    targets: [rag_indexer, graph_updater, compliance_assessment_queue]
+
+  - name: urgent_or_near_effective_date
+    urgency: high
+    targets: [alerting_queue]
+
+  - name: cosmetic_or_duplicate
+    change_types: [NO_CHANGE]
+    targets: [store_only]
+
+defaults:
+  material_targets: [rag_indexer, graph_updater, compliance_assessment_queue]
+  alert_window_days: 14
+

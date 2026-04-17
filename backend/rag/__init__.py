@@ -1,0 +1,2 @@
+"""Retrieval indexing components."""
+

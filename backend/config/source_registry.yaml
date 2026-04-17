@@ -1,0 +1,78 @@
+sources:
+  - source_id: eu_eurlex_privacy
+    source_name: EUR-Lex Official Journal Privacy Updates
+    jurisdiction: EU
+    domain: privacy
+    source_type: document_feed
+    base_url: https://eur-lex.europa.eu
+    auth_type: none
+    polling_interval_minutes: 720
+    parser_type: eurlex
+    is_active: true
+    trust_level: high
+    mock_items:
+      - id: eu-gdpr-guidance-2026-04
+        title: Guidance update on online marketplace data processing
+        summary: Clarifies controller obligations for marketplace sellers using customer analytics.
+        full_text: >
+          Online marketplace sellers must document lawful basis, retention periods, and processor
+          responsibilities when collecting customer data for fulfillment, analytics, refunds, and
+          post-purchase marketing. Policies should be updated before the effective date.
+        issuing_authority: European Union
+        publication_date: "2026-04-15T00:00:00"
+        effective_date: "2026-05-01T00:00:00"
+        updated_at_source: "2026-04-15T00:00:00"
+        source_url: https://eur-lex.europa.eu/
+        change_type: amended
+
+  - source_id: us_sec_filings
+    source_name: SEC Company Facts and Rules Feed
+    jurisdiction: US
+    domain: finance
+    source_type: api
+    base_url: https://data.sec.gov
+    auth_type: none
+    polling_interval_minutes: 1440
+    parser_type: sec
+    is_active: true
+    trust_level: high
+    headers:
+      User-Agent: "CompliancePlatform MVP contact@example.com"
+    mock_items:
+      - id: sec-small-business-disclosure-2026-04
+        title: Small business disclosure reminder
+        summary: Reminder on disclosure controls for companies preparing financing documents.
+        full_text: >
+          Companies raising capital should maintain accurate books, financial controls, and
+          documented disclosure review before sharing investor materials or filing reports.
+        issuing_authority: U.S. Securities and Exchange Commission
+        publication_date: "2026-04-10T00:00:00"
+        updated_at_source: "2026-04-10T00:00:00"
+        source_url: https://www.sec.gov/
+        change_type: new
+
+  - source_id: uk_fca_payments
+    source_name: FCA Payments and E-money Updates
+    jurisdiction: UK
+    domain: payments
+    source_type: document_feed
+    base_url: https://www.fca.org.uk
+    auth_type: none
+    polling_interval_minutes: 720
+    parser_type: fca
+    is_active: true
+    trust_level: high
+    mock_items:
+      - id: fca-payment-disclosures-2026-04
+        title: Payment disclosure expectations for online checkout
+        summary: Updates expectations for clear fees, refunds, and payment service disclosures.
+        full_text: >
+          Online sellers should make checkout fees, refund timing, payment dispute handling, and
+          third-party payment provider responsibilities clear before order confirmation.
+        issuing_authority: Financial Conduct Authority
+        publication_date: "2026-04-12T00:00:00"
+        effective_date: "2026-04-25T00:00:00"
+        updated_at_source: "2026-04-12T00:00:00"
+        source_url: https://www.fca.org.uk/
+        change_type: amended
+
