@@ -16,4 +16,3 @@ class ComplianceAssessment(BaseModel):
     recommended_actions: list[str]
     owner_role: str
     generated_at: datetime = Field(default_factory=datetime.utcnow)
-
