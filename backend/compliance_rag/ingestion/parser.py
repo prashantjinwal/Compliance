@@ -34,8 +34,8 @@ def detect_sections(text: str) -> list:
     """
     patterns = [
         r"(Item\s+\d+[A-Z]?\.\s+[A-Z][^\n]{5,60})",   # SEC 10-K items
-        r"(Article\s+\d+[\.\s][^\n]{5,60})",             # EU regulations
-        r"(§\s*\d+[\.\d]+\s+[^\n]{5,60})",              # US code sections
+        r"(Article\s+\d+[\.\s][^\n]{5,60})",             # EU regulations - optional
+        r"(§\s*\d+[\.\d]+\s+[^\n]{5,60})",              # US code sections - 
         r"(Section\s+\d+[\.\d]*\s+[^\n]{5,60})",        # Generic sections
     ]
     combined = "|".join(patterns)
