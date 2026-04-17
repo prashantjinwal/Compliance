@@ -1,13 +1,13 @@
 #turn text into dense vector 
 
-from sentence_transformers import SentenceTranformer 
+from sentence_transformers import SentenceTransformer 
 
 _model = None
 
-def get_embedder() -> SentenceTranformer:
+def get_embedder() -> SentenceTransformer:
     global _model
     if _model is None:
-        _model = SentenceTranformer("BAAI/bge-large-en-v1.5")
+        _model = SentenceTransformer("BAAI/bge-large-en-v1.5")
     return _model
 
 def encode(text: str) -> list:
