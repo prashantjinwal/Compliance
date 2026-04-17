@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Sidebar } from '@/components/sidebar'
 import { Topbar } from '@/components/topbar'
 import { Card } from '@/components/ui/card'
@@ -8,95 +8,164 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { ArrowRight, CheckCircle2, AlertCircle, TrendingUp, Zap, Send, Upload } from 'lucide-react'
-
-const suggestedActions = [
-  {
-    icon: CheckCircle2,
-    title: 'Update Data Retention Policy',
-    description: 'Implement new data retention requirements',
-  },
-  {
-    icon: Zap,
-    title: 'Conduct Module Audit v3.1',
-    description: 'Verify compliance across systems',
-  },
-  {
-    icon: TrendingUp,
-    title: 'Draft Disclosure Statement',
-    description: 'Document technical implementation steps',
-  },
-  {
-    icon: AlertCircle,
-    title: 'Schedule Board Review',
-    description: 'Present findings to leadership',
-  },
-]
-
-const chatMessages = [
-  {
-    id: 1,
-    role: 'ai',
-    content: 'Hello! I\'m the Institutional Agent for your compliance team. I\'ve analyzed the GDPR Audit task. Based on previous cycles, I recommend starting the vendor review phase 2 days early.',
-  },
-  {
-    id: 2,
-    role: 'user',
-    content: 'What are the key compliance gaps we need to address?',
-  },
-  {
-    id: 3,
-    role: 'ai',
-    content: 'Based on the latest regulatory updates, I\'ve identified 3 critical compliance gaps across your technical infrastructure. Notably, your data processing agreements need immediate attention for GDPR compliance.',
-    isExpanded: true,
-  },
-]
+import { useProtectedUser } from '@/hooks/use-protected-user'
+import { getOrganizationName, optionalAuthApiRequest } from '@/lib/api'
 
 export default function AIInterfacePage() {
+  const { user, loading, error } = useProtectedUser()
+  const [analysisInput, setAnalysisInput] = useState('')
   const [analysisResult, setAnalysisResult] = useState(null)
+  const [analysisLoading, setAnalysisLoading] = useState(false)
+  const [analysisError, setAnalysisError] = useState('')
   const [chatInput, setChatInput] = useState('')
-  const [messages, setMessages] = useState(chatMessages)
+  const [chatLoading, setChatLoading] = useState(false)
+  const [messages, setMessages] = useState([])
 
-  const handleAnalyze = () => {
-    setAnalysisResult('analysis')
+  useEffect(() => {
+    if (!user) {
+      return
+    }
+
+    setMessages([
+      {
+        id: 1,
+        role: 'ai',
+        content:
+          'Hello ' +
+          (user.full_name || user.email) +
+          '. I am ready to analyze compliance content for ' +
+          getOrganizationName(user) +
+          '. Connect an AI backend endpoint to begin real analysis.',
+      },
+    ])
+  }, [user])
+
+  async function handleAnalyze() {
+    if (!analysisInput.trim()) {
+      setAnalysisError('Enter regulatory text before starting analysis.')
+      return
+    }
+
+    setAnalysisLoading(true)
+    setAnalysisError('')
+    setAnalysisResult(null)
+
+    try {
+      const result = await optionalAuthApiRequest(
+        ['/api/ai/analyze/', '/api/ai/analyze-regulation/'],
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            text: analysisInput,
+          }),
+        }
+      )
+
+      if (!result.path) {
+        setAnalysisError('AI analyze endpoint is not configured yet. Expected one of: /api/ai/analyze/ or /api/ai/analyze-regulation/.')
+        return
+      }
+
+      setAnalysisResult(result.data)
+    } catch (requestError) {
+      setAnalysisError(requestError.message || 'Unable to analyze the submitted text.')
+    } finally {
+      setAnalysisLoading(false)
+    }
   }
 
-  const handleSendMessage = () => {
-    if (chatInput.trim()) {
-      const newMessage = {
-        id: messages.length + 1,
-        role: 'user',
-        content: chatInput,
-      }
-      setMessages([...messages, newMessage])
-      setChatInput('')
+  async function handleSendMessage() {
+    if (!chatInput.trim()) {
+      return
+    }
 
-      // Simulate AI response
-      setTimeout(() => {
-        setMessages(prev => [...prev, {
+    const nextUserMessage = {
+      id: messages.length + 1,
+      role: 'user',
+      content: chatInput,
+    }
+
+    setMessages(prev => [...prev, nextUserMessage])
+    setChatInput('')
+    setChatLoading(true)
+
+    try {
+      const result = await optionalAuthApiRequest(
+        ['/api/ai/chat/', '/api/ai/query/'],
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            message: nextUserMessage.content,
+          }),
+        }
+      )
+
+      if (!result.path) {
+        setMessages(prev => [
+          ...prev,
+          {
+            id: prev.length + 1,
+            role: 'ai',
+            content:
+              'AI chat endpoint is not configured yet. Expected one of: /api/ai/chat/ or /api/ai/query/.',
+          },
+        ])
+        return
+      }
+
+      const reply =
+        (result.data && (result.data.response || result.data.answer || result.data.message)) ||
+        'The AI endpoint responded, but no standard response field was found.'
+
+      setMessages(prev => [
+        ...prev,
+        {
           id: prev.length + 1,
           role: 'ai',
-          content: 'I understand. Let me analyze this further and provide comprehensive recommendations based on your regulatory framework.',
-        }])
-      }, 1000)
+          content: reply,
+        },
+      ])
+    } catch (requestError) {
+      setMessages(prev => [
+        ...prev,
+        {
+          id: prev.length + 1,
+          role: 'ai',
+          content: requestError.message || 'Unable to reach the AI service.',
+        },
+      ])
+    } finally {
+      setChatLoading(false)
     }
+  }
+
+  if (loading) {
+    return null
   }
 
   return (
     <div className="flex h-screen bg-gray-50">
-      <Sidebar />
+      <Sidebar user={user} />
 
       <div className="flex-1 ml-56">
-        <Topbar title="Regulation Analyzer" />
+        <Topbar title="Regulation Analyzer" user={user} />
 
         <main className="pt-20 px-8 pb-8 overflow-y-auto max-h-[calc(100vh-80px)]">
           <p className="text-gray-600 text-sm mb-8">Paste regulatory text or upload a document for instant institutional mapping.</p>
 
-          {/* Analyzer Section */}
+          {error ? (
+            <Card className="p-4 bg-red-50 border-red-200 mb-6">
+              <p className="text-sm text-red-700">{error}</p>
+            </Card>
+          ) : null}
+
           <Card className="p-8 bg-white border-gray-200 mb-8">
             <div className="space-y-6">
               <div>
                 <label className="text-sm font-medium text-gray-900 mb-3 block">Enter regulatory text, legal documentation, or corporate policy here for AI synthesis.</label>
                 <Textarea
+                  value={analysisInput}
+                  onChange={e => setAnalysisInput(e.target.value)}
                   placeholder="Paste regulation text or upload a directive for analysis..."
                   className="min-h-32 border-gray-200 bg-gray-50 placeholder-gray-500 text-gray-900"
                 />
@@ -107,86 +176,73 @@ export default function AIInterfacePage() {
                   <Upload className="w-4 h-4" />
                   Upload PDF
                 </Button>
-                <Button onClick={handleAnalyze} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-8">
-                  Analyze
+                <Button onClick={handleAnalyze} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-8" disabled={analysisLoading}>
+                  {analysisLoading ? 'Analyzing...' : 'Analyze'}
                   <ArrowRight className="w-4 h-4" />
                 </Button>
               </div>
             </div>
           </Card>
 
+          {analysisError ? (
+            <Card className="p-4 bg-amber-50 border-amber-200 mb-8">
+              <p className="text-sm text-amber-700">{analysisError}</p>
+            </Card>
+          ) : null}
+
           {analysisResult && (
             <div className="grid grid-cols-2 gap-6 mb-8">
-              {/* Left: Analysis Results */}
               <div className="space-y-6">
-                {/* Executive Summary */}
                 <Card className="p-6 bg-white border-gray-200">
                   <h3 className="text-sm font-semibold text-blue-600 uppercase tracking-wide mb-4">Executive Summary</h3>
                   <p className="text-gray-900 text-sm leading-relaxed mb-4">
-                    The submitted document (Directive 2024/NC) mandates new transparency reporting for cross-border implementations. Primarily impacts our algorithmic trading modules and requires updated disclosure by Q1 2024.
+                    {analysisResult.summary || analysisResult.executive_summary || analysisResult.response || 'No summary was returned by the AI endpoint.'}
                   </p>
                   <button className="text-blue-600 text-sm font-medium hover:underline">
                     Expand Details <ArrowRight className="inline w-3 h-3 ml-1" />
                   </button>
                 </Card>
 
-                {/* Impact Analysis */}
                 <Card className="p-6 bg-white border-gray-200">
                   <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-4">Impact Analysis</h3>
                   <div className="space-y-4">
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium text-gray-700">Operational</span>
-                        <div className="w-32 h-2 bg-gray-200 rounded-full overflow-hidden">
-                          <div className="h-full w-2/3 bg-blue-600" />
+                    {[
+                      { label: 'Operational', value: analysisResult.operational_impact || 0 },
+                      { label: 'Technical', value: analysisResult.technical_impact || 0 },
+                      { label: 'Financial', value: analysisResult.financial_impact || 0 },
+                    ].map(item => (
+                      <div key={item.label}>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-medium text-gray-700">{item.label}</span>
+                          <div className="w-32 h-2 bg-gray-200 rounded-full overflow-hidden">
+                            <div className="h-full bg-blue-600" style={{ width: `${Math.max(0, Math.min(100, item.value))}%` }} />
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium text-gray-700">Technical</span>
-                        <div className="w-32 h-2 bg-gray-200 rounded-full overflow-hidden">
-                          <div className="h-full w-1/2 bg-blue-600" />
-                        </div>
-                      </div>
-                    </div>
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium text-gray-700">Financial</span>
-                        <div className="w-32 h-2 bg-gray-200 rounded-full overflow-hidden">
-                          <div className="h-full w-1/3 bg-blue-600" />
-                        </div>
-                      </div>
-                    </div>
+                    ))}
                   </div>
                 </Card>
 
-                {/* Suggested Actions */}
                 <Card className="p-6 bg-white border-gray-200">
                   <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-4">Suggested Actions</h3>
                   <div className="space-y-3">
-                    {suggestedActions.map((action, idx) => {
-                      const Icon = action.icon
-                      return (
-                        <div key={idx} className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer">
-                          <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
-                            <Icon className="w-4 h-4 text-blue-600" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-900">{action.title}</p>
-                            <p className="text-xs text-gray-600 mt-1">{action.description}</p>
-                          </div>
+                    {Array.isArray(analysisResult.actions) && analysisResult.actions.length > 0 ? analysisResult.actions.map((action, idx) => (
+                      <div key={idx} className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer">
+                        <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+                          <CheckCircle2 className="w-4 h-4 text-blue-600" />
                         </div>
-                      )
-                    })}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900">{action.title || `Action ${idx + 1}`}</p>
+                          <p className="text-xs text-gray-600 mt-1">{action.description || action}</p>
+                        </div>
+                      </div>
+                    )) : (
+                      <p className="text-sm text-gray-500">No suggested actions were returned by the AI endpoint.</p>
+                    )}
                   </div>
-                  <button className="mt-4 text-blue-600 text-sm font-medium hover:underline flex items-center gap-1">
-                    Expand Task List <ArrowRight className="w-3 h-3" />
-                  </button>
                 </Card>
               </div>
 
-              {/* Right: Risk Score */}
               <div>
                 <Card className="p-6 bg-white border-gray-200 mb-6">
                   <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-6">Compliance Risk</h3>
@@ -208,37 +264,36 @@ export default function AIInterfacePage() {
                           fill="none"
                           stroke="#ea580c"
                           strokeWidth="8"
-                          strokeDasharray={`${(70 / 100) * 351.8} 351.8`}
+                          strokeDasharray={`${((analysisResult.risk_score || 0) / 100) * 351.8} 351.8`}
                         />
                       </svg>
                       <div className="absolute inset-0 flex items-center justify-center">
                         <div className="text-center">
-                          <p className="text-4xl font-bold text-gray-900">70</p>
-                          <p className="text-xs text-gray-600">Medium-High Risk</p>
+                          <p className="text-4xl font-bold text-gray-900">{analysisResult.risk_score || 0}</p>
+                          <p className="text-xs text-gray-600">{analysisResult.risk_label || 'No risk label provided'}</p>
                         </div>
                       </div>
                     </div>
 
                     <Badge className="bg-orange-100 text-orange-800 border-orange-200 mb-6">
-                      MEDIUM-HIGH RISK
+                      {(analysisResult.risk_label || 'Unknown Risk').toUpperCase()}
                     </Badge>
 
                     <p className="text-sm text-gray-600 text-center leading-relaxed">
-                      Based on current institutional baseline. Risk assessment may be escalated within 14 days pending implementation of recommended actions.
+                      {analysisResult.note || 'The AI endpoint did not return an additional note for this analysis.'}
                     </p>
                   </div>
                 </Card>
 
                 <Card className="p-4 bg-gray-50 border-gray-200">
                   <p className="text-xs text-gray-600">
-                    <strong>Note:</strong> This analysis integrates current compliance posture with regulatory updates. Recommendations prioritize feasibility and strategic alignment.
+                    <strong>Note:</strong> This panel renders the live AI response when an analysis endpoint is available.
                   </p>
                 </Card>
               </div>
             </div>
           )}
 
-          {/* AI Chat Section */}
           <Card className="bg-white border-gray-200 mb-8 flex flex-col" style={{ height: '500px' }}>
             <div className="border-b border-gray-200 p-6">
               <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
@@ -247,7 +302,6 @@ export default function AIInterfacePage() {
               </h3>
             </div>
 
-            {/* Messages */}
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
               {messages.map(msg => (
                 <div
@@ -272,14 +326,13 @@ export default function AIInterfacePage() {
               ))}
             </div>
 
-            {/* Input */}
             <div className="border-t border-gray-200 p-4">
               <div className="flex gap-2">
                 <input
                   type="text"
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
                   placeholder="Ask about compliance..."
                   className="flex-1 px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                 />
@@ -287,6 +340,7 @@ export default function AIInterfacePage() {
                   onClick={handleSendMessage}
                   className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2"
                   size="sm"
+                  disabled={chatLoading}
                 >
                   <Send className="w-4 h-4" />
                 </Button>

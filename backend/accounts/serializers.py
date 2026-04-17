@@ -1,6 +1,7 @@
-from rest_framework import serializers
-from .models import User, Organization, Role
 from django.contrib.auth import authenticate
+from rest_framework import serializers
+
+from .models import Organization, Role, User
 
 
 class OrganizationSerializer(serializers.ModelSerializer):
@@ -15,40 +16,102 @@ class RoleSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 
-class RegisterSerializer(serializers.ModelSerializer):
+class RegisterSerializer(serializers.Serializer):
+    first_name = serializers.CharField(max_length=150)
+    last_name = serializers.CharField(max_length=150)
+    email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
-    organization = OrganizationSerializer()
+    confirm_password = serializers.CharField(write_only=True)
+    organization = serializers.CharField(max_length=255)
+    username = serializers.EmailField(write_only=True)
 
-    class Meta:
-        model = User
-        fields = ["email", "password", "full_name", "organization"]
+    def validate(self, attrs):
+        email = attrs["email"].strip().lower()
+        username = attrs["username"].strip().lower()
+        first_name = attrs["first_name"].strip()
+        last_name = attrs["last_name"].strip()
+        organization = attrs["organization"].strip()
+
+        if email != username:
+            raise serializers.ValidationError(
+                {"username": "Username must match the email address."}
+            )
+
+        if attrs["password"] != attrs["confirm_password"]:
+            raise serializers.ValidationError(
+                {"confirm_password": "Passwords do not match."}
+            )
+
+        if not first_name:
+            raise serializers.ValidationError(
+                {"first_name": "First name is required."}
+            )
+
+        if not last_name:
+            raise serializers.ValidationError(
+                {"last_name": "Last name is required."}
+            )
+
+        if not organization:
+            raise serializers.ValidationError(
+                {"organization": "Organization is required."}
+            )
+
+        if User.objects.filter(email=email).exists():
+            raise serializers.ValidationError(
+                {"email": "A user with this email already exists."}
+            )
+
+        attrs["email"] = email
+        attrs["username"] = username
+        attrs["first_name"] = first_name
+        attrs["last_name"] = last_name
+        attrs["organization"] = organization
+        return attrs
 
     def create(self, validated_data):
-        org_data = validated_data.pop("organization")
-        organization = Organization.objects.create(**org_data)
+        validated_data.pop("confirm_password")
+        validated_data.pop("username")
 
-        # default role
-        role = Role.objects.filter(name="Admin").first()
+        organization_name = validated_data.pop("organization")
+        first_name = validated_data.pop("first_name")
+        last_name = validated_data.pop("last_name")
+        full_name = (first_name + " " + last_name).strip()
+
+        organization = Organization.objects.filter(
+            name__iexact=organization_name
+        ).first()
+        if organization is None:
+            organization = Organization.objects.create(
+                name=organization_name,
+                industry="Not specified",
+                country="Not specified",
+            )
+
+        role = Role.objects.filter(name__iexact="Admin").first()
 
         user = User.objects.create_user(
             email=validated_data["email"],
             password=validated_data["password"],
-            full_name=validated_data["full_name"],
+            full_name=full_name,
             organization=organization,
-            role=role
+            role=role,
         )
 
         return user
 
 
 class LoginSerializer(serializers.Serializer):
-    email = serializers.EmailField()
-    password = serializers.CharField()
+    username = serializers.EmailField()
+    password = serializers.CharField(write_only=True)
 
     def validate(self, data):
-        user = authenticate(email=data["email"], password=data["password"])
+        username = data["username"].strip().lower()
+        user = authenticate(username=username, password=data["password"])
         if not user:
-            raise serializers.ValidationError("Invalid credentials")
+            raise serializers.ValidationError({"detail": "Invalid credentials."})
+        if not user.is_active:
+            raise serializers.ValidationError({"detail": "User account is disabled."})
         return user
 
 

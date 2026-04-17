@@ -1,8 +1,10 @@
 'use client'
 
 import { Bell, Search } from 'lucide-react'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { getUserDisplayName, getUserInitial } from '@/lib/api'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,7 +12,10 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 
-export function Topbar({ title }) {
+export function Topbar({ title, user }) {
+  const displayName = getUserDisplayName(user)
+  const displayInitial = getUserInitial(user)
+
   return (
     <div className="fixed top-0 left-56 right-0 h-16 bg-white border-b border-gray-200 flex items-center justify-between px-8 z-40">
       <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
@@ -63,7 +68,18 @@ export function Topbar({ title }) {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <button className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 hover:opacity-90 transition-opacity" />
+        <button
+          type="button"
+          title={displayName}
+          aria-label={displayName}
+          className="rounded-full hover:opacity-90 transition-opacity"
+        >
+          <Avatar className="h-10 w-10 ring-1 ring-blue-100">
+            <AvatarFallback className="bg-gradient-to-br from-blue-500 to-blue-700 text-sm font-bold text-white">
+              {displayInitial}
+            </AvatarFallback>
+          </Avatar>
+        </button>
       </div>
     </div>
   )
