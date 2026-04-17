@@ -22,3 +22,5 @@ obj/
 # --- Logs ---
 *.log
 npm-debug.log*
+
+.venv/
