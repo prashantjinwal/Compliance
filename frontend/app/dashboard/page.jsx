@@ -138,7 +138,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Chart Section */}
-          <Card className="p-6 bg-white border-gray-200 mb-8">
+          {/* <Card className="p-6 bg-white border-gray-200 mb-8">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-lg font-semibold text-gray-900">Compliance Trend</h3>
               <div className="flex gap-2">
@@ -158,12 +158,12 @@ export default function DashboardPage() {
                 <Bar dataKey="compliance" fill="#2563eb" radius={[8, 8, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
-          </Card>
+          </Card> */}
 
           {/* Bottom Section */}
-          <div className="grid grid-cols-3 gap-6">
+          {/* <div className="grid grid-cols-3 gap-6"> */}
             {/* Recent Regulations */}
-            <div className="col-span-2 space-y-4">
+            {/* <div className="col-span-2 space-y-4">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-gray-900">Recent Regulations</h3>
                 <button className="text-blue-600 text-sm font-medium hover:underline">View Intelligence Hub</button>
@@ -185,10 +185,10 @@ export default function DashboardPage() {
                   </Card>
                 ))}
               </div>
-            </div>
+            </div> */}
 
             {/* Alerts Panel */}
-            <div>
+            {/* <div>
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Alerts Panel</h3>
               <div className="space-y-3">
                 {alerts.map((alert) => (
@@ -211,8 +211,8 @@ export default function DashboardPage() {
                   </Card>
                 ))}
               </div>
-            </div>
-          </div>
+            </div> */}
+          {/* </div> */}
         </main>
       </div>
     </div>
