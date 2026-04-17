@@ -1,26 +1,57 @@
-#Qdrant operations in one file: create collection, upsert chunks, and hybrid search. 
+# Qdrant operations in one file: create collection, upsert chunks, and hybrid search.
 
+import atexit
+import os
+import uuid
+
+from dotenv import load_dotenv
 from qdrant_client import QdrantClient
+from qdrant_client.http.exceptions import ResponseHandlingException
 from qdrant_client.models import (
     VectorParams, Distance, PointStruct,
     Filter, FieldCondition, MatchValue
 )
-import os, uuid
-from vectorstore.embedder import encode, encode_batch
+
+load_dotenv()
 
 _client = None
+
+COLLECTION = os.getenv("COLLECTION_NAME", "regulations")
+QDRANT_MODE = os.getenv("QDRANT_MODE", "server").strip().lower()
+QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333").strip()
+QDRANT_LOCAL_PATH = os.getenv("QDRANT_LOCAL_PATH", "./qdrant_local_db").strip()
 
 def get_client() -> QdrantClient:
     global _client
     if _client is None:
-        _client = QdrantClient(url=os.getenv("QDRANT_URL", "http://localhost:6333"))
+        if QDRANT_MODE == "local":
+            _client = QdrantClient(path=QDRANT_LOCAL_PATH)
+        elif QDRANT_MODE == "memory":
+            _client = QdrantClient(":memory:")
+        else:
+            _client = QdrantClient(url=QDRANT_URL)
     return _client
 
-COLLECTION = os.getenv("COLLECTION_NAME", "regulations")
+def close_client():
+    global _client
+    if _client is not None:
+        _client.close()
+        _client = None
+
+atexit.register(close_client)
 
 def setup_collection():
     client = get_client()
-    existing = [c.name for c in client.get_collections().collections]
+    try:
+        existing = [c.name for c in client.get_collections().collections]
+    except ResponseHandlingException as exc:
+        raise RuntimeError(
+            "Could not connect to Qdrant. "
+            f"QDRANT_MODE={QDRANT_MODE!r}, QDRANT_URL={QDRANT_URL!r}. "
+            "If you want embedded local storage, set QDRANT_MODE=local in .env. "
+            "If you want server mode, start Qdrant on localhost:6333."
+        ) from exc
+
     if COLLECTION not in existing:
         client.create_collection(
             collection_name=COLLECTION,
@@ -31,6 +62,8 @@ def setup_collection():
         print(f"Collection already exists: {COLLECTION}")
 
 def upsert_chunks(chunks: list):
+    from vectorstore.embedder import encode_batch
+
     client  = get_client()
     texts   = [c["text"] for c in chunks]
     vectors = encode_batch(texts)
@@ -52,6 +85,8 @@ def upsert_chunks(chunks: list):
     print(f"Upserted {len(points)} chunks into '{COLLECTION}'")
 
 def search(query: str, top_k: int = 5, source_filter: str = None) -> list:
+    from vectorstore.embedder import encode
+
     client     = get_client()
     query_vec  = encode(query)
     
