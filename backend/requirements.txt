@@ -14,6 +14,7 @@ distro==1.9.0
 Django==6.0.4
 django-cors-headers==4.9.0
 djangorestframework==3.17.1
+djangorestframework-simplejwt
 drf-yasg==1.21.15
 fastapi==0.136.0
 h11==0.16.0

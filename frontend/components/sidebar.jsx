@@ -2,11 +2,21 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Building2, Cpu, CheckSquare, Bell, LogOut } from 'lucide-react'
+import { LayoutDashboard, Building2, Cpu, CheckSquare, LogOut } from 'lucide-react'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { clearAuthTokens, getUserDisplayName, getUserInitial, getUserRole } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
-export function Sidebar() {
+export function Sidebar({ user }) {
   const pathname = usePathname()
+  const displayName = getUserDisplayName(user)
+  const displayRole = getUserRole(user)
+  const displayInitial = getUserInitial(user)
+
+  function handleSignOut() {
+    clearAuthTokens()
+    window.location.href = '/auth'
+  }
 
   const menuItems = [
     {
@@ -70,17 +80,20 @@ export function Sidebar() {
 
       <div className="p-6 border-t border-gray-200 space-y-4">
         <div className="flex items-center gap-3">
-          <img
-            src="https://api.dicebear.com/7.x/avataaars/svg?seed=Julian"
-            alt="User"
-            className="w-8 h-8 rounded-full"
-          />
+          <Avatar className="h-10 w-10 ring-1 ring-orange-100">
+            <AvatarFallback className="bg-gradient-to-br from-amber-500 to-red-500 text-sm font-bold text-white">
+              {displayInitial}
+            </AvatarFallback>
+          </Avatar>
           <div className="text-sm">
-            <p className="font-medium text-gray-900">Julian Thorne</p>
-            <p className="text-xs text-gray-500">Compliance Officer</p>
+            <p className="font-medium text-gray-900">{displayName}</p>
+            <p className="text-xs text-gray-500">{displayRole}</p>
           </div>
         </div>
-        <button className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 rounded-lg transition-colors">
+        <button
+          onClick={handleSignOut}
+          className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm text-gray-600 bg-gray-50 border border-gray-200 hover:bg-gray-100 rounded-lg transition-colors"
+        >
           <LogOut className="w-4 h-4" />
           Sign Out
         </button>

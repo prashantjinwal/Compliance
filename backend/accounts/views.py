@@ -1,11 +1,19 @@
 from django.shortcuts import render
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.views import APIView
-from drf_spectacular.utils import extend_schema
 from rest_framework.response import Response
 from rest_framework import status
 from .serializers import RegisterSerializer, LoginSerializer, UserSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
+
+try:
+    from drf_spectacular.utils import extend_schema
+except ImportError:
+    def extend_schema(*args, **kwargs):
+        def decorator(view_method):
+            return view_method
+        return decorator
+
 # Create your views here.
 
 class RegisterView(APIView):
