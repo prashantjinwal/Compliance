@@ -1,7 +1,14 @@
-import json, re, os
-from groq import Groq
-from rag.retriever import retrieve_regulations
-from rag.prompt import build_prompt
+import json
+import os
+import re
+
+try:
+    from groq import Groq
+except ImportError:
+    Groq = None
+
+from .prompt import build_prompt
+from .retriever import retrieve_regulations
 
 
 _client = None
@@ -9,8 +16,38 @@ _client = None
 def get_client():
     global _client
     if _client is None:
-        _client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+        if Groq is None:
+            raise RuntimeError("The 'groq' package is not installed.")
+
+        api_key = os.getenv("GROQ_API_KEY")
+        if not api_key:
+            raise RuntimeError("GROQ_API_KEY is not configured.")
+
+        _client = Groq(api_key=api_key)
     return _client
+
+
+def _parse_json(raw: str) -> dict:
+    cleaned = (raw or "").strip()
+    cleaned = re.sub(r"^```json\s*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"^```\s*", "", cleaned)
+    cleaned = re.sub(r"\s*```$", "", cleaned)
+
+    try:
+        verdict = json.loads(cleaned)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", cleaned, flags=re.DOTALL)
+        if not match:
+            raise
+        verdict = json.loads(match.group(0))
+
+    return {
+        "risk_level": verdict.get("risk_level", "error"),
+        "risk_score": verdict.get("risk_score", 0.0),
+        "findings": verdict.get("findings", []),
+        "compliant_elements": verdict.get("compliant_elements", []),
+        "summary": verdict.get("summary", "No summary returned by the model."),
+    }
 
 def assess_chunk(chunk: dict) -> dict:
     retrieved = retrieve_regulations(chunk["text"], top_k=5)
@@ -52,3 +89,7 @@ def assess_chunk(chunk: dict) -> dict:
     verdict["source"]        = chunk["source"]
     verdict["retrieved"]     = retrieved
     return verdict
+
+
+def assess_document(chunks: list[dict]) -> list[dict]:
+    return [assess_chunk(chunk) for chunk in chunks]

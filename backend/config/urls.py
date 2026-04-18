@@ -10,6 +10,7 @@ except ImportError:
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/auth/", include("accounts.urls")),
+    path("api/ai/", include("api.django_urls")),
 ]
 
 if SpectacularAPIView and SpectacularSwaggerView:

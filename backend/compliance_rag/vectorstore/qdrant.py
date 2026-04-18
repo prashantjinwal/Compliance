@@ -3,6 +3,7 @@
 import atexit
 import os
 import uuid
+from pathlib import Path
 
 from dotenv import load_dotenv
 from qdrant_client import QdrantClient
@@ -17,9 +18,12 @@ load_dotenv()
 _client = None
 
 COLLECTION = os.getenv("COLLECTION_NAME", "regulations")
-QDRANT_MODE = os.getenv("QDRANT_MODE", "server").strip().lower()
+QDRANT_MODE = os.getenv("QDRANT_MODE", "local").strip().lower()
 QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333").strip()
-QDRANT_LOCAL_PATH = os.getenv("QDRANT_LOCAL_PATH", "./qdrant_local_db").strip()
+QDRANT_LOCAL_PATH = os.getenv(
+    "QDRANT_LOCAL_PATH",
+    str(Path(__file__).resolve().parents[1] / "qdrant_local_db"),
+).strip()
 
 def get_client() -> QdrantClient:
     global _client
@@ -62,7 +66,7 @@ def setup_collection():
         print(f"Collection already exists: {COLLECTION}")
 
 def upsert_chunks(chunks: list):
-    from vectorstore.embedder import encode_batch
+    from .embedder import encode_batch
 
     client  = get_client()
     texts   = [c["text"] for c in chunks]
@@ -85,7 +89,7 @@ def upsert_chunks(chunks: list):
     print(f"Upserted {len(points)} chunks into '{COLLECTION}'")
 
 def search(query: str, top_k: int = 5, source_filter: str = None) -> list:
-    from vectorstore.embedder import encode
+    from .embedder import encode
 
     client     = get_client()
     query_vec  = encode(query)

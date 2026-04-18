@@ -17,6 +17,7 @@ djangorestframework==3.17.1
 djangorestframework-simplejwt
 drf-yasg==1.21.15
 fastapi==0.136.0
+groq==0.31.1
 h11==0.16.0
 httpcore==1.0.9
 httpx==0.28.1
@@ -37,6 +38,7 @@ openai==2.32.0
 orjson==3.11.8
 ormsgpack==1.12.2
 packaging==26.1
+pdfplumber==0.11.7
 prompt_toolkit==3.0.52
 pydantic==2.13.1
 pydantic_core==2.46.1
@@ -48,12 +50,15 @@ qdrant-client==1.17.1
 redis==7.4.0
 requests==2.33.1
 requests-toolbelt==1.0.0
+sentence-transformers==5.1.1
 six==1.17.0
 sniffio==1.3.1
 sqlparse==0.5.5
 APScheduler==3.11.2
 tenacity==9.1.4
+torch==2.11.0
 tqdm==4.67.3
+transformers==4.57.1
 typing-inspection==0.4.2
 typing_extensions==4.15.0
 tzdata==2026.1

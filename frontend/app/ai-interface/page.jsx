@@ -14,6 +14,7 @@ import { getOrganizationName, optionalAuthApiRequest } from '@/lib/api'
 export default function AIInterfacePage() {
   const { user, loading, error } = useProtectedUser()
   const [analysisInput, setAnalysisInput] = useState('')
+  const [selectedFile, setSelectedFile] = useState(null)
   const [analysisResult, setAnalysisResult] = useState(null)
   const [analysisLoading, setAnalysisLoading] = useState(false)
   const [analysisError, setAnalysisError] = useState('')
@@ -35,14 +36,14 @@ export default function AIInterfacePage() {
           (user.full_name || user.email) +
           '. I am ready to analyze compliance content for ' +
           getOrganizationName(user) +
-          '. Connect an AI backend endpoint to begin real analysis.',
+          '. Upload a document, paste regulatory text, or ask a compliance question to use the live RAG backend.',
       },
     ])
   }, [user])
 
   async function handleAnalyze() {
-    if (!analysisInput.trim()) {
-      setAnalysisError('Enter regulatory text before starting analysis.')
+    if (!analysisInput.trim() && !selectedFile) {
+      setAnalysisError('Enter regulatory text or upload a file before starting analysis.')
       return
     }
 
@@ -51,15 +52,30 @@ export default function AIInterfacePage() {
     setAnalysisResult(null)
 
     try {
-      const result = await optionalAuthApiRequest(
-        ['/api/ai/analyze/', '/api/ai/analyze-regulation/'],
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            text: analysisInput,
-          }),
-        }
-      )
+      let result
+
+      if (selectedFile) {
+        const formData = new FormData()
+        formData.append('file', selectedFile)
+
+        result = await optionalAuthApiRequest(
+          ['/api/ai/analyze/', '/api/ai/analyze-regulation/'],
+          {
+            method: 'POST',
+            body: formData,
+          }
+        )
+      } else {
+        result = await optionalAuthApiRequest(
+          ['/api/ai/analyze/', '/api/ai/analyze-regulation/'],
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              text: analysisInput,
+            }),
+          }
+        )
+      }
 
       if (!result.path) {
         setAnalysisError('AI analyze endpoint is not configured yet. Expected one of: /api/ai/analyze/ or /api/ai/analyze-regulation/.')
@@ -172,10 +188,26 @@ export default function AIInterfacePage() {
               </div>
 
               <div className="flex gap-3">
-                <Button className="flex items-center gap-2 bg-gray-200 hover:bg-gray-300 text-gray-900">
-                  <Upload className="w-4 h-4" />
-                  Upload PDF
-                </Button>
+                <label className="inline-flex">
+                  <input
+                    type="file"
+                    accept=".pdf,.txt"
+                    className="hidden"
+                    onChange={e => {
+                      const file = e.target.files && e.target.files[0] ? e.target.files[0] : null
+                      setSelectedFile(file)
+                    }}
+                  />
+                  <Button asChild className="flex items-center gap-2 bg-gray-200 hover:bg-gray-300 text-gray-900">
+                    <span>
+                      <Upload className="w-4 h-4" />
+                      Upload PDF
+                    </span>
+                  </Button>
+                </label>
+                {selectedFile ? (
+                  <span className="self-center text-sm text-gray-600">{selectedFile.name}</span>
+                ) : null}
                 <Button onClick={handleAnalyze} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-8" disabled={analysisLoading}>
                   {analysisLoading ? 'Analyzing...' : 'Analyze'}
                   <ArrowRight className="w-4 h-4" />

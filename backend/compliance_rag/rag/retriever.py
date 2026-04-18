@@ -1,10 +1,4 @@
-
-
-import re
-from vectorstore.qdrant import search
-
-import re
-from vectorstore.qdrant import search
+from ..vectorstore.qdrant import search
 
 RISK_SIGNALS = [
     "material", "disclosure", "shall", "must", "required",
