@@ -7,16 +7,19 @@ import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
-import { ArrowRight, CheckCircle2, AlertCircle, TrendingUp, Zap, Send, Upload } from 'lucide-react'
+import { ArrowRight, CheckCircle2, Zap, Send, Upload } from 'lucide-react'
 import { useProtectedUser } from '@/hooks/use-protected-user'
-import { getOrganizationName, optionalAuthApiRequest } from '@/lib/api'
+import { chatWithCopilotDocument, getOrganizationName, uploadCopilotDocument } from '@/lib/api'
 
 export default function AIInterfacePage() {
   const { user, loading, error } = useProtectedUser()
   const [analysisInput, setAnalysisInput] = useState('')
+  const [selectedFile, setSelectedFile] = useState(null)
   const [analysisResult, setAnalysisResult] = useState(null)
   const [analysisLoading, setAnalysisLoading] = useState(false)
   const [analysisError, setAnalysisError] = useState('')
+  const [currentDocumentId, setCurrentDocumentId] = useState('')
+  const [chatSessionId, setChatSessionId] = useState('')
   const [chatInput, setChatInput] = useState('')
   const [chatLoading, setChatLoading] = useState(false)
   const [messages, setMessages] = useState([])
@@ -35,38 +38,40 @@ export default function AIInterfacePage() {
           (user.full_name || user.email) +
           '. I am ready to analyze compliance content for ' +
           getOrganizationName(user) +
-          '. Connect an AI backend endpoint to begin real analysis.',
+          '. Upload a document or paste regulatory text to start a DRF-backed compliance analysis.',
       },
     ])
   }, [user])
 
   async function handleAnalyze() {
-    if (!analysisInput.trim()) {
-      setAnalysisError('Enter regulatory text before starting analysis.')
+    if (!analysisInput.trim() && !selectedFile) {
+      setAnalysisError('Enter regulatory text or upload a file before starting analysis.')
       return
     }
 
     setAnalysisLoading(true)
     setAnalysisError('')
     setAnalysisResult(null)
+    setChatSessionId('')
 
     try {
-      const result = await optionalAuthApiRequest(
-        ['/api/ai/analyze/', '/api/ai/analyze-regulation/'],
+      const result = await uploadCopilotDocument({
+        file: selectedFile,
+        text: analysisInput.trim(),
+      })
+
+      const payload = result.data || result
+
+      setAnalysisResult(payload)
+      setCurrentDocumentId(payload.doc_id)
+      setMessages(prev => [
+        prev[0],
         {
-          method: 'POST',
-          body: JSON.stringify({
-            text: analysisInput,
-          }),
-        }
-      )
-
-      if (!result.path) {
-        setAnalysisError('AI analyze endpoint is not configured yet. Expected one of: /api/ai/analyze/ or /api/ai/analyze-regulation/.')
-        return
-      }
-
-      setAnalysisResult(result.data)
+          id: prev.length + 1,
+          role: 'ai',
+          content: 'Analysis complete. You can now ask follow-up questions about this document.',
+        },
+      ])
     } catch (requestError) {
       setAnalysisError(requestError.message || 'Unable to analyze the submitted text.')
     } finally {
@@ -76,6 +81,18 @@ export default function AIInterfacePage() {
 
   async function handleSendMessage() {
     if (!chatInput.trim()) {
+      return
+    }
+
+    if (!currentDocumentId) {
+      setMessages(prev => [
+        ...prev,
+        {
+          id: prev.length + 1,
+          role: 'ai',
+          content: 'Analyze a document first so I have a document context to query.',
+        },
+      ])
       return
     }
 
@@ -90,39 +107,20 @@ export default function AIInterfacePage() {
     setChatLoading(true)
 
     try {
-      const result = await optionalAuthApiRequest(
-        ['/api/ai/chat/', '/api/ai/query/'],
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            message: nextUserMessage.content,
-          }),
-        }
-      )
+      const result = await chatWithCopilotDocument(currentDocumentId, {
+        question: nextUserMessage.content,
+        ...(chatSessionId ? { session_id: chatSessionId } : {}),
+      })
 
-      if (!result.path) {
-        setMessages(prev => [
-          ...prev,
-          {
-            id: prev.length + 1,
-            role: 'ai',
-            content:
-              'AI chat endpoint is not configured yet. Expected one of: /api/ai/chat/ or /api/ai/query/.',
-          },
-        ])
-        return
-      }
+      const payload = result.data || result
 
-      const reply =
-        (result.data && (result.data.response || result.data.answer || result.data.message)) ||
-        'The AI endpoint responded, but no standard response field was found.'
-
+      setChatSessionId(payload.session_id || '')
       setMessages(prev => [
         ...prev,
         {
           id: prev.length + 1,
           role: 'ai',
-          content: reply,
+          content: payload.answer || 'No answer was returned by the AI service.',
         },
       ])
     } catch (requestError) {
@@ -142,6 +140,8 @@ export default function AIInterfacePage() {
   if (loading) {
     return null
   }
+
+  const suggestedTasks = Array.isArray(analysisResult?.tasks) ? analysisResult.tasks : []
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -172,10 +172,26 @@ export default function AIInterfacePage() {
               </div>
 
               <div className="flex gap-3">
-                <Button className="flex items-center gap-2 bg-gray-200 hover:bg-gray-300 text-gray-900">
-                  <Upload className="w-4 h-4" />
-                  Upload PDF
-                </Button>
+                <label className="inline-flex">
+                  <input
+                    type="file"
+                    accept=".pdf,.txt"
+                    className="hidden"
+                    onChange={e => {
+                      const file = e.target.files && e.target.files[0] ? e.target.files[0] : null
+                      setSelectedFile(file)
+                    }}
+                  />
+                  <Button asChild className="flex items-center gap-2 bg-gray-200 hover:bg-gray-300 text-gray-900">
+                    <span>
+                      <Upload className="w-4 h-4" />
+                      Upload PDF
+                    </span>
+                  </Button>
+                </label>
+                {selectedFile ? (
+                  <span className="self-center text-sm text-gray-600">{selectedFile.name}</span>
+                ) : null}
                 <Button onClick={handleAnalyze} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-8" disabled={analysisLoading}>
                   {analysisLoading ? 'Analyzing...' : 'Analyze'}
                   <ArrowRight className="w-4 h-4" />
@@ -196,48 +212,52 @@ export default function AIInterfacePage() {
                 <Card className="p-6 bg-white border-gray-200">
                   <h3 className="text-sm font-semibold text-blue-600 uppercase tracking-wide mb-4">Executive Summary</h3>
                   <p className="text-gray-900 text-sm leading-relaxed mb-4">
-                    {analysisResult.summary || analysisResult.executive_summary || analysisResult.response || 'No summary was returned by the AI endpoint.'}
+                    {analysisResult.analysis?.summary || analysisResult.summary || 'No summary was returned by the backend.'}
                   </p>
-                  <button className="text-blue-600 text-sm font-medium hover:underline">
-                    Expand Details <ArrowRight className="inline w-3 h-3 ml-1" />
-                  </button>
+                  <p className="text-xs text-gray-500">
+                    Document ID: {analysisResult.doc_id}
+                  </p>
                 </Card>
 
                 <Card className="p-6 bg-white border-gray-200">
                   <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-4">Impact Analysis</h3>
                   <div className="space-y-4">
-                    {[
-                      { label: 'Operational', value: analysisResult.operational_impact || 0 },
-                      { label: 'Technical', value: analysisResult.technical_impact || 0 },
-                      { label: 'Financial', value: analysisResult.financial_impact || 0 },
-                    ].map(item => (
-                      <div key={item.label}>
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm font-medium text-gray-700">{item.label}</span>
-                          <div className="w-32 h-2 bg-gray-200 rounded-full overflow-hidden">
-                            <div className="h-full bg-blue-600" style={{ width: `${Math.max(0, Math.min(100, item.value))}%` }} />
-                          </div>
-                        </div>
-                      </div>
-                    ))}
+                    <div>
+                      <p className="text-sm font-medium text-gray-700 mb-2">Key Changes</p>
+                      <p className="text-sm text-gray-600">
+                        {analysisResult.analysis?.key_changes || 'No key-change narrative was returned.'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-700 mb-2">Obligations</p>
+                      <ul className="space-y-2 text-sm text-gray-600">
+                        {Array.isArray(analysisResult.analysis?.obligations) && analysisResult.analysis.obligations.length > 0 ? (
+                          analysisResult.analysis.obligations.map((obligation, index) => (
+                            <li key={index}>{obligation}</li>
+                          ))
+                        ) : (
+                          <li>No obligations were returned.</li>
+                        )}
+                      </ul>
+                    </div>
                   </div>
                 </Card>
 
                 <Card className="p-6 bg-white border-gray-200">
                   <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-4">Suggested Actions</h3>
                   <div className="space-y-3">
-                    {Array.isArray(analysisResult.actions) && analysisResult.actions.length > 0 ? analysisResult.actions.map((action, idx) => (
+                    {suggestedTasks.length > 0 ? suggestedTasks.map((task, idx) => (
                       <div key={idx} className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer">
                         <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
                           <CheckCircle2 className="w-4 h-4 text-blue-600" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-900">{action.title || `Action ${idx + 1}`}</p>
-                          <p className="text-xs text-gray-600 mt-1">{action.description || action}</p>
+                          <p className="text-sm font-medium text-gray-900">{task.title || `Action ${idx + 1}`}</p>
+                          <p className="text-xs text-gray-600 mt-1">{task.suggested_action || task.description}</p>
                         </div>
                       </div>
                     )) : (
-                      <p className="text-sm text-gray-500">No suggested actions were returned by the AI endpoint.</p>
+                      <p className="text-sm text-gray-500">No suggested actions were returned by the backend.</p>
                     )}
                   </div>
                 </Card>
@@ -264,30 +284,35 @@ export default function AIInterfacePage() {
                           fill="none"
                           stroke="#ea580c"
                           strokeWidth="8"
-                          strokeDasharray={`${((analysisResult.risk_score || 0) / 100) * 351.8} 351.8`}
+                          strokeDasharray={`${((analysisResult.analysis?.relevance_score || 0) * 351.8)} 351.8`}
                         />
                       </svg>
                       <div className="absolute inset-0 flex items-center justify-center">
                         <div className="text-center">
-                          <p className="text-4xl font-bold text-gray-900">{analysisResult.risk_score || 0}</p>
-                          <p className="text-xs text-gray-600">{analysisResult.risk_label || 'No risk label provided'}</p>
+                          <p className="text-4xl font-bold text-gray-900">
+                            {Math.round((analysisResult.analysis?.relevance_score || 0) * 100)}
+                          </p>
+                          <p className="text-xs text-gray-600">Relevance Score</p>
                         </div>
                       </div>
                     </div>
 
                     <Badge className="bg-orange-100 text-orange-800 border-orange-200 mb-6">
-                      {(analysisResult.risk_label || 'Unknown Risk').toUpperCase()}
+                      {(analysisResult.risk?.risk_level || 'unknown').toUpperCase()}
                     </Badge>
 
                     <p className="text-sm text-gray-600 text-center leading-relaxed">
-                      {analysisResult.note || 'The AI endpoint did not return an additional note for this analysis.'}
+                      {analysisResult.risk?.description || 'The backend did not return a risk description.'}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-3">
+                      Responsible role: {analysisResult.risk?.responsible_role || 'Compliance'}
                     </p>
                   </div>
                 </Card>
 
                 <Card className="p-4 bg-gray-50 border-gray-200">
                   <p className="text-xs text-gray-600">
-                    <strong>Note:</strong> This panel renders the live AI response when an analysis endpoint is available.
+                    <strong>Note:</strong> This panel is backed by the existing DRF copilot upload endpoint and document chat endpoint.
                   </p>
                 </Card>
               </div>

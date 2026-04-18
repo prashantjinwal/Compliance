@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { useProtectedUser } from '@/hooks/use-protected-user'
-import { getSafeOrganizationValue, optionalAuthApiRequest } from '@/lib/api'
+import { fetchOrganization, getSafeOrganizationValue, updateOrganization } from '@/lib/api'
 
 const DEPARTMENTS = ['Finance', 'HR', 'Legal', 'IT', 'Marketing', 'Operations']
 const REGULATIONS = ['RBI', 'SEBI', 'GDPR', 'HIPAA', 'PCI-DSS', 'SOX']
@@ -33,20 +33,35 @@ function getIndustryValue(industry) {
   return 'not_specified'
 }
 
-function buildProfileForm(user, companyData) {
-  const organization = (companyData && companyData.organization) || user?.organization || {}
+function getIndustryLabel(industry) {
+  const labels = {
+    financial_services: 'Financial Services',
+    fintech: 'Fintech',
+    healthcare: 'Healthcare',
+    ecommerce: 'E-commerce',
+    manufacturing: 'Manufacturing',
+    legal: 'Legal',
+    not_specified: 'Not specified',
+  }
+
+  return labels[industry] || 'Not specified'
+}
+
+function buildProfileForm(user, organization) {
+  const riskMappingRules = organization?.risk_mapping_rules || {}
+  const regionValue = riskMappingRules.region || organization?.regions?.[0] || ''
 
   return {
-    name: organization.name || '',
-    industry: getIndustryValue(getSafeOrganizationValue(organization.industry)),
-    size: (companyData && companyData.size) || '1000+',
-    country: organization.country || '',
-    region: (companyData && companyData.region) || '',
-    headcount: (companyData && companyData.headcount) || '',
-    email: (companyData && companyData.email) || user?.email || '',
-    regulations: (companyData && companyData.regulations) || [],
-    departments: (companyData && companyData.departments) || [],
-    risk: (companyData && companyData.risk) || 'medium',
+    name: organization?.name || '',
+    industry: getIndustryValue(getSafeOrganizationValue(organization?.industry)),
+    size: riskMappingRules.size || '1000+',
+    country: organization?.country || '',
+    region: regionValue,
+    headcount: riskMappingRules.headcount || '',
+    email: riskMappingRules.email || user?.email || '',
+    regulations: organization?.configured_sources || [],
+    departments: riskMappingRules.departments || [],
+    risk: riskMappingRules.risk || 'medium',
   }
 }
 
@@ -65,9 +80,8 @@ export default function CompanyProfilePage() {
     risk: 'medium',
   })
   const [pageError, setPageError] = useState('')
-  const [pageNotice, setPageNotice] = useState('')
   const [saveMessage, setSaveMessage] = useState('')
-  const [companyEndpointPath, setCompanyEndpointPath] = useState(null)
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     if (!user) {
@@ -78,29 +92,20 @@ export default function CompanyProfilePage() {
 
     async function loadCompanyProfile() {
       try {
-        const result = await optionalAuthApiRequest([
-          '/api/company-profile/',
-          '/api/company/',
-        ])
+        const organization = await fetchOrganization()
 
         if (!isActive) {
           return
         }
 
-        setCompanyEndpointPath(result.path)
-        setForm(buildProfileForm(user, result.data))
-
-        if (!result.path) {
-          setPageNotice('Using current account and organization data because no dedicated company profile endpoint is configured yet.')
-        } else {
-          setPageNotice('')
-        }
+        setForm(buildProfileForm(user, organization))
+        setPageError('')
       } catch (requestError) {
         if (!isActive) {
           return
         }
 
-        setForm(buildProfileForm(user, null))
+        setForm(buildProfileForm(user, user?.organization))
         setPageError(requestError.message || 'Unable to load company profile data.')
       }
     }
@@ -124,13 +129,35 @@ export default function CompanyProfilePage() {
       : [...form[key], val]
     )
 
-  const handleSave = () => {
-    if (!companyEndpointPath) {
-      setSaveMessage('Save is ready, but a company profile update endpoint is not available yet.')
-      return
-    }
+  const handleSave = async () => {
+    setSaving(true)
+    setSaveMessage('')
 
-    setSaveMessage('Update endpoint detected, but save wiring depends on its request schema.')
+    try {
+      await updateOrganization({
+        name: form.name.trim(),
+        industry: getIndustryLabel(form.industry),
+        country: form.country.trim(),
+        regions: form.region.trim() ? [form.region.trim()] : [],
+        configured_sources: form.regulations,
+        risk_mapping_rules: {
+          departments: form.departments,
+          risk: form.risk,
+          size: form.size,
+          headcount: form.headcount,
+          email: form.email.trim(),
+          region: form.region.trim(),
+        },
+      })
+
+      setSaveMessage('Company profile saved successfully.')
+      setPageError('')
+    } catch (requestError) {
+      setPageError(requestError.message || 'Unable to save company profile.')
+      setSaveMessage('')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -146,12 +173,6 @@ export default function CompanyProfilePage() {
           {error || pageError ? (
             <Card className="p-4 bg-red-50 border-red-200 mb-6">
               <p className="text-sm text-red-700">{pageError || error}</p>
-            </Card>
-          ) : null}
-
-          {pageNotice ? (
-            <Card className="p-4 bg-blue-50 border-blue-200 mb-6">
-              <p className="text-sm text-blue-700">{pageNotice}</p>
             </Card>
           ) : null}
 
@@ -204,6 +225,7 @@ export default function CompanyProfilePage() {
                     {REGULATIONS.map(reg => (
                       <button
                         key={reg}
+                        type="button"
                         onClick={() => toggleList('regulations', reg)}
                         className={`px-3 py-1 rounded-full text-sm border transition-colors ${
                           form.regulations.includes(reg)
@@ -240,13 +262,14 @@ export default function CompanyProfilePage() {
                 <div className="flex gap-2">
                   {['low', 'medium', 'high'].map(level => {
                     const colors = {
-                      low:    form.risk === 'low'    ? 'bg-green-600 text-white border-green-600' : 'bg-white text-gray-600 border-gray-200 hover:border-green-300',
+                      low: form.risk === 'low' ? 'bg-green-600 text-white border-green-600' : 'bg-white text-gray-600 border-gray-200 hover:border-green-300',
                       medium: form.risk === 'medium' ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-gray-600 border-gray-200 hover:border-amber-300',
-                      high:   form.risk === 'high'   ? 'bg-red-600 text-white border-red-600'     : 'bg-white text-gray-600 border-gray-200 hover:border-red-300',
+                      high: form.risk === 'high' ? 'bg-red-600 text-white border-red-600' : 'bg-white text-gray-600 border-gray-200 hover:border-red-300',
                     }
                     return (
                       <button
                         key={level}
+                        type="button"
                         onClick={() => set('risk', level)}
                         className={`px-5 py-2 rounded-lg text-sm border font-medium capitalize transition-colors ${colors[level]}`}
                       >
@@ -258,10 +281,10 @@ export default function CompanyProfilePage() {
               </Card>
 
               <div className="flex items-center gap-3">
-                <Button onClick={handleSave} className="bg-blue-600 hover:bg-blue-700 text-white px-6">
-                  Save Profile
+                <Button onClick={handleSave} className="bg-blue-600 hover:bg-blue-700 text-white px-6" disabled={saving}>
+                  {saving ? 'Saving...' : 'Save Profile'}
                 </Button>
-                {saveMessage ? <span className="text-sm text-amber-600">{saveMessage}</span> : null}
+                {saveMessage ? <span className="text-sm text-green-600">{saveMessage}</span> : null}
               </div>
             </div>
 
@@ -318,7 +341,7 @@ export default function CompanyProfilePage() {
                 </div>
 
                 <div className="mt-6 pt-6 border-t border-blue-500">
-                  <button className="w-full bg-white text-blue-600 font-semibold py-2 rounded-lg hover:bg-blue-50 transition-colors text-sm">
+                  <button type="button" className="w-full bg-white text-blue-600 font-semibold py-2 rounded-lg hover:bg-blue-50 transition-colors text-sm">
                     Upload Supplemental Documentation
                   </button>
                 </div>

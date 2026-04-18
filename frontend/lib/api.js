@@ -24,10 +24,26 @@ export function getApiErrorMessage(data, fallbackMessage) {
   }
 
   if (typeof data === "string") {
+    if (looksLikeHtml(data)) {
+      return fallbackMessage;
+    }
+
+    if (data.includes("GEMINI_API_KEY")) {
+      return "Backend AI configuration is missing. Please set GEMINI_API_KEY.";
+    }
+
     return data;
   }
 
   if (typeof data.detail === "string") {
+    if (looksLikeHtml(data.detail)) {
+      return fallbackMessage;
+    }
+
+    if (data.detail.includes("GEMINI_API_KEY")) {
+      return "Backend AI configuration is missing. Please set GEMINI_API_KEY.";
+    }
+
     return data.detail;
   }
 
@@ -58,6 +74,10 @@ export function getApiErrorMessage(data, fallbackMessage) {
   }
 
   return fallbackMessage;
+}
+
+function looksLikeHtml(value) {
+  return typeof value === "string" && /<(?:!doctype|html|head|body|div|script)\b/i.test(value);
 }
 
 export async function parseApiResponse(response) {
@@ -94,7 +114,13 @@ export async function apiRequest(path, options) {
   const data = await parseApiResponse(response);
 
   if (!response.ok) {
-    const error = new Error(getApiErrorMessage(data, "Request failed."));
+    let fallbackMessage = "Request failed.";
+
+    if (response.status >= 500) {
+      fallbackMessage = "The backend returned an unexpected server error.";
+    }
+
+    const error = new Error(getApiErrorMessage(data, fallbackMessage));
     error.status = response.status;
     error.data = data;
     error.path = path;
@@ -147,6 +173,75 @@ export async function optionalAuthApiRequest(paths, options) {
 
 export function fetchCurrentUser() {
   return authApiRequest("/api/auth/me/");
+}
+
+export function fetchOrganization() {
+  return authApiRequest("/api/auth/organization/");
+}
+
+export function updateOrganization(payload) {
+  return authApiRequest("/api/auth/organization/", {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function fetchDashboardSummary() {
+  return authApiRequest("/api/tasks/dashboard/");
+}
+
+export function fetchTasks(params) {
+  const query = new URLSearchParams();
+
+  if (params) {
+    Object.entries(params).forEach(function ([key, value]) {
+      if (value !== undefined && value !== null && value !== "") {
+        query.set(key, value);
+      }
+    });
+  }
+
+  const suffix = query.toString() ? "?" + query.toString() : "";
+  return authApiRequest("/api/tasks/" + suffix);
+}
+
+export function fetchRisks(params) {
+  const query = new URLSearchParams();
+
+  if (params) {
+    Object.entries(params).forEach(function ([key, value]) {
+      if (value !== undefined && value !== null && value !== "") {
+        query.set(key, value);
+      }
+    });
+  }
+
+  const suffix = query.toString() ? "?" + query.toString() : "";
+  return authApiRequest("/api/risks/" + suffix);
+}
+
+export async function uploadCopilotDocument(payload) {
+  const formData = new FormData();
+
+  if (payload && payload.file) {
+    formData.append("file", payload.file);
+  }
+
+  if (payload && payload.text) {
+    formData.append("text", payload.text);
+  }
+
+  return authApiRequest("/api/copilot/upload/", {
+    method: "POST",
+    body: formData,
+  });
+}
+
+export function chatWithCopilotDocument(documentId, payload) {
+  return authApiRequest("/api/copilot/chat/" + documentId + "/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export function getUserDisplayName(user) {

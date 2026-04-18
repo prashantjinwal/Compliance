@@ -16,6 +16,9 @@ class UploadDocumentSerializer(serializers.Serializer):
 class UploadResponseSerializer(serializers.Serializer):
     doc_id = serializers.UUIDField()
     summary = serializers.CharField()
+    analysis = serializers.DictField(required=False)
+    risk = serializers.DictField(required=False)
+    tasks = serializers.ListField(required=False)
 
 
 class ChatWithDocSerializer(serializers.Serializer):

@@ -14,7 +14,7 @@ class UserDocument(models.Model):
 
     title = models.CharField(max_length=255, blank=True)
 
-    file = models.FileField(upload_to="user_docs/")
+    file = models.FileField(upload_to="user_docs/", null=True, blank=True)
     raw_text = models.TextField()
 
     summary = models.TextField(blank=True)
