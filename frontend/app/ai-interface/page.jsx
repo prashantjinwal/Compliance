@@ -11,6 +11,18 @@ import { ArrowRight, CheckCircle2, Zap, Send, Upload } from 'lucide-react'
 import { useProtectedUser } from '@/hooks/use-protected-user'
 import { chatWithCopilotDocument, getOrganizationName, uploadCopilotDocument } from '@/lib/api'
 
+function getFriendlyAIErrorMessage(error, fallbackMessage) {
+  if (error && error.code === 'QUOTA_EXCEEDED') {
+    if (error.retrySeconds) {
+      return 'AI quota exceeded. Please retry in about ' + error.retrySeconds + ' seconds.'
+    }
+
+    return 'AI quota exceeded. Please retry in a few seconds.'
+  }
+
+  return (error && error.message) || fallbackMessage
+}
+
 export default function AIInterfacePage() {
   const { user, loading, error } = useProtectedUser()
   const [analysisInput, setAnalysisInput] = useState('')
@@ -73,7 +85,7 @@ export default function AIInterfacePage() {
         },
       ])
     } catch (requestError) {
-      setAnalysisError(requestError.message || 'Unable to analyze the submitted text.')
+      setAnalysisError(getFriendlyAIErrorMessage(requestError, 'Unable to analyze the submitted text.'))
     } finally {
       setAnalysisLoading(false)
     }
@@ -129,7 +141,7 @@ export default function AIInterfacePage() {
         {
           id: prev.length + 1,
           role: 'ai',
-          content: requestError.message || 'Unable to reach the AI service.',
+          content: getFriendlyAIErrorMessage(requestError, 'Unable to reach the AI service.'),
         },
       ])
     } finally {
