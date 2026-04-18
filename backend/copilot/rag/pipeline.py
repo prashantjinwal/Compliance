@@ -2,7 +2,7 @@ import json
 import re
 from datetime import date, timedelta
 
-from .llm import get_llm
+from .llm import invoke_llm
 from .vector_store import load_vector_store
 
 
@@ -19,12 +19,7 @@ ROLE_LOOKUP = {
 
 
 def _call_llm(prompt):
-    response = get_llm().invoke(prompt)
-
-    if hasattr(response, "content"):
-        return response.content
-
-    return str(response)
+    return invoke_llm(prompt)
 
 
 def _extract_json(raw_text, fallback):

@@ -7,6 +7,7 @@ from ai_services import analyze_regulation, assess_risk, generate_tasks
 
 from .models import ChatMessage, ChatSession, UserDocument
 from .rag.config import CopilotConfigurationError
+from .rag.errors import CopilotRateLimitError
 from .rag.pipeline import chat_with_doc, summarize_document
 from .rag.vector_store import create_vector_store
 from .serializers import (
@@ -16,6 +17,25 @@ from .serializers import (
     UploadResponseSerializer,
 )
 from .utils import extract_text_from_pdf
+
+
+def build_rate_limit_response(exc):
+    payload = {
+        "success": False,
+        "error_code": exc.error_code,
+        "error": "AI quota exceeded. Please retry in a few seconds.",
+    }
+
+    if exc.retry_seconds:
+        payload["retry_seconds"] = exc.retry_seconds
+        payload["error"] = f"AI quota exceeded. Please retry in about {exc.retry_seconds} seconds."
+
+    response = Response(payload, status=status.HTTP_429_TOO_MANY_REQUESTS)
+
+    if exc.retry_seconds:
+        response["Retry-After"] = str(exc.retry_seconds)
+
+    return response
 
 
 class UploadAndSummarizeView(APIView):
@@ -62,12 +82,18 @@ class UploadAndSummarizeView(APIView):
             create_vector_store(doc.id, raw_text)
         except CopilotConfigurationError as exc:
             return Response(
-                {"success": False, "error": str(exc)},
+                {"success": False, "error_code": "CONFIGURATION_ERROR", "error": str(exc)},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
+        except CopilotRateLimitError as exc:
+            return build_rate_limit_response(exc)
         except Exception as exc:
             return Response(
-                {"success": False, "error": f"Copilot processing failed: {exc}"},
+                {
+                    "success": False,
+                    "error_code": "COPILOT_PROCESSING_FAILED",
+                    "error": "Copilot processing failed. Please try again.",
+                },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -137,12 +163,18 @@ class ChatWithDocView(APIView):
             answer = chat_with_doc(doc_id, question)
         except CopilotConfigurationError as exc:
             return Response(
-                {"success": False, "error": str(exc)},
+                {"success": False, "error_code": "CONFIGURATION_ERROR", "error": str(exc)},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
+        except CopilotRateLimitError as exc:
+            return build_rate_limit_response(exc)
         except Exception as exc:
             return Response(
-                {"success": False, "error": f"Copilot chat failed: {exc}"},
+                {
+                    "success": False,
+                    "error_code": "COPILOT_CHAT_FAILED",
+                    "error": "Copilot chat failed. Please try again.",
+                },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 

@@ -23,6 +23,14 @@ export function getApiErrorMessage(data, fallbackMessage) {
     return fallbackMessage;
   }
 
+  if (data.error_code === "QUOTA_EXCEEDED") {
+    if (data.retry_seconds) {
+      return "AI quota exceeded. Please retry in about " + data.retry_seconds + " seconds.";
+    }
+
+    return "AI quota exceeded. Please retry in a few seconds.";
+  }
+
   if (typeof data === "string") {
     if (looksLikeHtml(data)) {
       return fallbackMessage;
@@ -124,6 +132,8 @@ export async function apiRequest(path, options) {
     error.status = response.status;
     error.data = data;
     error.path = path;
+    error.code = data && data.error_code ? data.error_code : "";
+    error.retrySeconds = data && data.retry_seconds ? data.retry_seconds : null;
     throw error;
   }
 
