@@ -7,13 +7,24 @@ from .models import Organization, Role, User
 class OrganizationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Organization
-        fields = "__all__"
+        fields = [
+            "id", "name", "industry", "country", "regions",
+            "configured_sources", "risk_mapping_rules", "created_at", "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+
+class OrganizationUpdateSerializer(serializers.ModelSerializer):
+    """Used for PATCH /api/auth/organization/ — partial updates."""
+    class Meta:
+        model = Organization
+        fields = ["name", "industry", "country", "regions", "configured_sources", "risk_mapping_rules"]
 
 
 class RoleSerializer(serializers.ModelSerializer):
     class Meta:
         model = Role
-        fields = "__all__"
+        fields = ["id", "name", "description"]
 
 
 class RegisterSerializer(serializers.Serializer):
@@ -73,6 +84,9 @@ class RegisterSerializer(serializers.Serializer):
         validated_data.pop("confirm_password")
         validated_data.pop("username")
 
+        # Always seed default roles for the new org
+        _seed_default_roles()
+
         organization_name = validated_data.pop("organization")
         first_name = validated_data.pop("first_name")
         last_name = validated_data.pop("last_name")
@@ -97,7 +111,6 @@ class RegisterSerializer(serializers.Serializer):
             organization=organization,
             role=role,
         )
-
         return user
 
 
@@ -116,9 +129,31 @@ class LoginSerializer(serializers.Serializer):
 
 
 class UserSerializer(serializers.ModelSerializer):
-    organization = OrganizationSerializer()
-    role = RoleSerializer()
+    organization = OrganizationSerializer(read_only=True)
+    role = RoleSerializer(read_only=True)
 
     class Meta:
         model = User
-        fields = ["id", "email", "full_name", "organization", "role"]
+        fields = ["id", "email", "full_name", "organization", "role", "date_joined"]
+        read_only_fields = ["id", "date_joined"]
+
+
+class UserUpdateSerializer(serializers.ModelSerializer):
+    """Partial update of the authenticated user profile."""
+    class Meta:
+        model = User
+        fields = ["full_name"]
+
+
+def _seed_default_roles():
+    """Ensure every installation has the standard role set."""
+    default_roles = [
+        ("Admin", "Full administrative access"),
+        ("Legal", "Legal team — reviews regulations and notes"),
+        ("IT", "IT team — handles technical compliance tasks"),
+        ("Finance", "Finance team — handles financial compliance"),
+        ("Auditor", "Read-only audit access"),
+        ("Compliance", "General compliance officer"),
+    ]
+    for name, desc in default_roles:
+        Role.objects.get_or_create(name=name, defaults={"description": desc})

@@ -1,46 +1,80 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 import { Sidebar } from "@/components/sidebar";
 import { Topbar } from "@/components/topbar";
 import { Card } from "@/components/ui/card";
 import { useProtectedUser } from "@/hooks/use-protected-user";
-import { getOrganizationName, getSafeOrganizationValue } from "@/lib/api";
+import { fetchDashboardSummary, getOrganizationName } from "@/lib/api";
 import { AlertCircle, CheckCircle2, Clock, TrendingUp } from "lucide-react";
 
-function buildDashboardMetrics(user) {
-  const profileChecks = [
-    user && user.full_name,
-    user && user.email,
-    user && user.role && user.role.name,
-    user && user.organization && user.organization.name,
-    user &&
-      user.organization &&
-      getSafeOrganizationValue(user.organization.industry),
-    user &&
-      user.organization &&
-      getSafeOrganizationValue(user.organization.country),
-  ];
-
-  const completedChecks = profileChecks.filter(Boolean).length;
-  const totalChecks = profileChecks.length;
-  const missingFields = totalChecks - completedChecks;
+function buildDashboardMetrics(summary) {
+  const totalTasks = Number(summary?.total_tasks || 0);
+  const byStatus = summary?.by_status || {};
+  const completedTasks = Number(byStatus.completed || 0);
+  const pendingTasks =
+    Number(byStatus.pending || 0) +
+    Number(byStatus.in_progress || 0) +
+    Number(byStatus.blocked || 0);
 
   return {
-    complianceScore: Math.round((completedChecks / totalChecks) * 100),
-    activeAlerts: missingFields,
-    pendingTasks: 0,
-    recentUpdates: completedChecks,
+    complianceScore:
+      totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0,
+    activeAlerts:
+      Number(summary?.open_risks || 0) +
+      Number(summary?.overdue_tasks?.length || 0),
+    pendingTasks,
+    recentUpdates: Number(summary?.new_regulations || 0),
   };
 }
 
 export default function DashboardPage() {
   const { user, loading, error } = useProtectedUser();
+  const [dashboardSummary, setDashboardSummary] = useState(null);
+  const [dashboardError, setDashboardError] = useState("");
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    let isActive = true;
+
+    async function loadDashboard() {
+      try {
+        const summary = await fetchDashboardSummary();
+
+        if (!isActive) {
+          return;
+        }
+
+        setDashboardSummary(summary);
+        setDashboardError("");
+      } catch (requestError) {
+        if (!isActive) {
+          return;
+        }
+
+        setDashboardSummary(null);
+        setDashboardError(
+          requestError.message || "Unable to load dashboard summary."
+        );
+      }
+    }
+
+    loadDashboard();
+
+    return () => {
+      isActive = false;
+    };
+  }, [user]);
 
   if (loading) {
     return null;
   }
 
-  const metrics = buildDashboardMetrics(user);
+  const metrics = buildDashboardMetrics(dashboardSummary);
   const organizationName = getOrganizationName(user);
 
   return (
@@ -56,11 +90,9 @@ export default function DashboardPage() {
             {organizationName}.
           </p>
 
-          {error ? (
+          {error || dashboardError ? (
             <Card className="p-4 bg-red-50 border-red-200 mb-6">
-              <p className="text-sm text-red-700">
-                {error}
-              </p>
+              <p className="text-sm text-red-700">{dashboardError || error}</p>
             </Card>
           ) : null}
 
@@ -75,7 +107,7 @@ export default function DashboardPage() {
                     {metrics.complianceScore}%
                   </p>
                   <p className="text-gray-500 text-xs mt-1">
-                    Based on current profile completeness
+                    Based on completed compliance tasks
                   </p>
                 </div>
                 <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center">
@@ -94,7 +126,7 @@ export default function DashboardPage() {
                     {metrics.activeAlerts}
                   </p>
                   <p className="text-gray-500 text-xs mt-1">
-                    Missing profile fields need attention
+                    Open risks and overdue tasks
                   </p>
                 </div>
                 <div className="w-12 h-12 rounded-lg bg-red-100 flex items-center justify-center">
@@ -113,7 +145,7 @@ export default function DashboardPage() {
                     {metrics.pendingTasks}
                   </p>
                   <p className="text-gray-500 text-xs mt-1">
-                    Waiting for task API integration
+                    Pending, in progress, and blocked tasks
                   </p>
                 </div>
                 <div className="w-12 h-12 rounded-lg bg-yellow-100 flex items-center justify-center">
@@ -132,7 +164,7 @@ export default function DashboardPage() {
                     {metrics.recentUpdates}
                   </p>
                   <p className="text-gray-500 text-xs mt-1">
-                    Available account and organization fields
+                    New regulations added in the last 7 days
                   </p>
                 </div>
                 <div className="w-12 h-12 rounded-lg bg-green-100 flex items-center justify-center">

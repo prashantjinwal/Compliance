@@ -10,52 +10,39 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Progress } from '@/components/ui/progress'
 import { AlertCircle, Clock, CheckCircle2, Plus } from 'lucide-react'
 import { useProtectedUser } from '@/hooks/use-protected-user'
-import { optionalAuthApiRequest } from '@/lib/api'
+import { fetchDashboardSummary, fetchRisks, fetchTasks } from '@/lib/api'
 
-function normalizeTasksResponse(payload) {
-  if (!payload) {
-    return []
+function getDisplayStatus(status) {
+  const statusMap = {
+    pending: 'Pending',
+    in_progress: 'In Progress',
+    completed: 'Completed',
+    blocked: 'Blocked',
   }
 
-  if (Array.isArray(payload)) {
-    return payload
-  }
-
-  if (Array.isArray(payload.results)) {
-    return payload.results
-  }
-
-  if (Array.isArray(payload.tasks)) {
-    return payload.tasks
-  }
-
-  if (Array.isArray(payload.items)) {
-    return payload.items
-  }
-
-  return []
+  return statusMap[status] || status || 'Pending'
 }
 
-function normalizeTask(task, index) {
-  const status = task.status || 'Pending'
-  const riskLevel = task.priority || task.risk_level || task.riskLevel || 'Unknown'
-  const riskKey = riskLevel.toString().toLowerCase()
+function normalizeTask(task, riskLookup) {
+  const risk = riskLookup[task.risk_id]
+  const riskLevel = risk ? risk.risk_level : 'unknown'
 
   const badgeMap = {
     high: 'bg-red-100 text-red-800',
     medium: 'bg-yellow-100 text-yellow-800',
     low: 'bg-green-100 text-green-800',
+    critical: 'bg-red-100 text-red-800',
     unknown: 'bg-gray-100 text-gray-800',
   }
 
   return {
-    id: task.id || index + 1,
-    name: task.name || task.title || 'Untitled Task',
-    department: task.department || task.assignee || 'Unassigned',
+    id: task.id,
+    name: task.title || 'Untitled Task',
+    department: task.assigned_to_name || task.assigned_role || 'Unassigned',
     riskLevel,
-    deadline: task.due_date || task.deadline || 'No due date',
-    status,
-    badgeColor: badgeMap[riskKey] || badgeMap.unknown,
+    deadline: task.deadline || 'No due date',
+    status: task.status || 'pending',
+    badgeColor: badgeMap[riskLevel] || badgeMap.unknown,
   }
 }
 
@@ -65,7 +52,7 @@ export default function TasksPage() {
   const [tasks, setTasks] = useState([])
   const [tasksLoading, setTasksLoading] = useState(true)
   const [tasksError, setTasksError] = useState('')
-  const [tasksEndpointPath, setTasksEndpointPath] = useState(null)
+  const [dashboardSummary, setDashboardSummary] = useState(null)
 
   useEffect(() => {
     if (!user) {
@@ -74,32 +61,35 @@ export default function TasksPage() {
 
     let isActive = true
 
-    async function loadTasks() {
+    async function loadTasksPage() {
       setTasksLoading(true)
       setTasksError('')
 
       try {
-        const result = await optionalAuthApiRequest(['/api/tasks/'])
+        const [taskList, riskList, summary] = await Promise.all([
+          fetchTasks(),
+          fetchRisks(),
+          fetchDashboardSummary(),
+        ])
 
         if (!isActive) {
           return
         }
 
-        setTasksEndpointPath(result.path)
+        const riskLookup = {}
+        riskList.forEach(risk => {
+          riskLookup[risk.id] = risk
+        })
 
-        if (!result.path) {
-          setTasks([])
-          setTasksError('Task list endpoint is not available yet. The UI is ready to consume /api/tasks/ when it is added.')
-          return
-        }
-
-        setTasks(normalizeTasksResponse(result.data).map(normalizeTask))
+        setTasks(taskList.map(task => normalizeTask(task, riskLookup)))
+        setDashboardSummary(summary)
       } catch (requestError) {
         if (!isActive) {
           return
         }
 
         setTasks([])
+        setDashboardSummary(null)
         setTasksError(requestError.message || 'Unable to load tasks.')
       } finally {
         if (isActive) {
@@ -108,7 +98,7 @@ export default function TasksPage() {
       }
     }
 
-    loadTasks()
+    loadTasksPage()
 
     return () => {
       isActive = false
@@ -120,12 +110,12 @@ export default function TasksPage() {
       return tasks
     }
 
-    return tasks.filter(task => task.status.toLowerCase() === activeTab.toLowerCase())
+    return tasks.filter(task => task.status === activeTab)
   }, [activeTab, tasks])
 
-  const completedCount = tasks.filter(task => task.status === 'Completed').length
+  const completedCount = tasks.filter(task => task.status === 'completed').length
   const completionPercentage = tasks.length > 0 ? (completedCount / tasks.length) * 100 : 0
-  const urgentCount = tasks.filter(task => task.status === 'Pending').length
+  const urgentCount = Number(dashboardSummary?.open_risks || 0) + Number(dashboardSummary?.overdue_tasks?.length || 0)
 
   const departmentDistribution = useMemo(() => {
     const counts = {}
@@ -155,7 +145,7 @@ export default function TasksPage() {
     tasks.forEach(task => {
       const normalizedRisk = task.riskLevel.toString().toLowerCase()
 
-      if (normalizedRisk === 'high') {
+      if (normalizedRisk === 'critical' || normalizedRisk === 'high') {
         counts['High Risk'] += 1
       } else if (normalizedRisk === 'medium') {
         counts['Medium Risk'] += 1
@@ -171,26 +161,29 @@ export default function TasksPage() {
     ]
   }, [tasks])
 
-  const getStatusBadge = (status) => {
+  const getStatusBadge = status => {
     switch (status) {
-      case 'Completed':
+      case 'completed':
         return 'bg-green-100 text-green-800'
-      case 'In Progress':
+      case 'in_progress':
         return 'bg-blue-100 text-blue-800'
-      case 'Pending':
+      case 'pending':
         return 'bg-yellow-100 text-yellow-800'
+      case 'blocked':
+        return 'bg-red-100 text-red-800'
       default:
         return 'bg-gray-100 text-gray-800'
     }
   }
 
-  const getStatusIcon = (status) => {
+  const getStatusIcon = status => {
     switch (status) {
-      case 'Completed':
+      case 'completed':
         return <CheckCircle2 className="w-4 h-4" />
-      case 'In Progress':
+      case 'in_progress':
         return <Clock className="w-4 h-4" />
-      case 'Pending':
+      case 'pending':
+      case 'blocked':
         return <AlertCircle className="w-4 h-4" />
       default:
         return null
@@ -237,7 +230,7 @@ export default function TasksPage() {
                 <p className="text-sm font-medium text-blue-100 mb-1">Urgent Actions</p>
                 <p className="text-4xl font-bold">{urgentCount.toString().padStart(2, '0')}</p>
                 <p className="text-xs text-blue-100 mt-1">
-                  {tasksEndpointPath ? 'Pending items loaded from backend' : 'Waiting for task endpoint'}
+                  Open risks and overdue tasks from the dashboard API
                 </p>
               </div>
             </div>
@@ -252,7 +245,7 @@ export default function TasksPage() {
                 <TabsTrigger value="pending" className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-600">
                   Pending
                 </TabsTrigger>
-                <TabsTrigger value="in progress" className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-600">
+                <TabsTrigger value="in_progress" className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-600">
                   In Progress
                 </TabsTrigger>
                 <TabsTrigger value="completed" className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-600">
@@ -287,7 +280,7 @@ export default function TasksPage() {
                           <span className="text-sm text-gray-600">{task.department}</span>
 
                           <Badge className={`${task.badgeColor} w-fit text-xs font-semibold`}>
-                            {task.riskLevel} Risk
+                            {task.riskLevel === 'unknown' ? 'Unknown Risk' : `${task.riskLevel} Risk`}
                           </Badge>
 
                           <span className="text-sm text-gray-600">{task.deadline}</span>
@@ -295,7 +288,7 @@ export default function TasksPage() {
                           <div className="flex items-center gap-2">
                             {getStatusIcon(task.status)}
                             <Badge className={`${getStatusBadge(task.status)} text-xs font-semibold`}>
-                              {task.status}
+                              {getDisplayStatus(task.status)}
                             </Badge>
                           </div>
                         </div>
@@ -303,9 +296,7 @@ export default function TasksPage() {
                     </div>
                   ) : (
                     <div className="px-6 py-10 text-sm text-gray-500">
-                      {tasksEndpointPath
-                        ? 'No tasks are available for this account yet.'
-                        : 'No task endpoint is currently configured in the backend.'}
+                      No tasks are available for this account yet.
                     </div>
                   )}
                 </TabsContent>
@@ -320,12 +311,12 @@ export default function TasksPage() {
           <div className="flex gap-3 mb-8">
             <Button
               className="bg-blue-600 hover:bg-blue-700 text-white font-semibold flex items-center gap-2"
-              disabled={!tasksEndpointPath}
+              disabled
             >
               <Plus className="w-4 h-4" />
               New Task
             </Button>
-            <Button variant="outline" className="border-gray-200">
+            <Button variant="outline" className="border-gray-200" disabled>
               Export Report
             </Button>
           </div>
